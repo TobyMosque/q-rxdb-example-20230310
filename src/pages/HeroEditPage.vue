@@ -9,7 +9,7 @@
           save, you will overwrite the changes.
         </p>
         <template v-slot:action>
-          <q-btn flat label="resync" @click="onResyncClick" />
+          <q-btn flat label="resync" @click="resync" />
         </template>
       </q-banner>
       <q-banner v-if="deleted" class="bg-negative">
@@ -56,50 +56,97 @@
   </q-dialog>
 </template>
 
-<script setup lang="ts">
+<script lang="ts">
+import { defineComponent, ref } from 'vue';
+import { preFetch } from 'quasar/wrappers';
 import { RxHeroDocument } from 'src/types/hero';
+import { defineStore } from 'pinia';
+import { Subscription } from 'rxjs';
+
+const useHeroStore = defineStore('hero-edit', () => {
+  const hero = ref<RxHeroDocument>();
+  const hp = ref(0);
+  const deleted = ref(false);
+  const synced = ref(true);
+
+  let subscription: Subscription;
+  async function fetch(this: HeroStore, slug: string) {
+    const data = await this.database.heroes.findOne(slug).exec();
+    hero.value = data as RxHeroDocument;
+    hp.value = hero.value.hp;
+
+    subscription = hero.value.$.subscribe((_hero) => {
+      hero.value = _hero;
+      synced.value = _hero.hp === hp.value;
+      deleted.value = _hero.deleted;
+    });
+  }
+
+  function resync() {
+    hp.value = hero.value?.hp || 0;
+    synced.value = true;
+  }
+
+  function save() {
+    return hero.value?.incrementalPatch({ hp: parseInt(hp.value + '') });
+  }
+
+  function dispose(this: HeroStore) {
+    if (subscription) {
+      subscription.unsubscribe();
+    }
+    return this.$dispose();
+  }
+
+  return {
+    hero,
+    hp,
+    deleted,
+    synced,
+    fetch,
+    dispose,
+    resync,
+    save,
+  };
+});
+type HeroStore = ReturnType<typeof useHeroStore>;
+
+export default defineComponent({
+  preFetch: preFetch(({ store, currentRoute }) => {
+    const heroStore = useHeroStore(store);
+    return heroStore.fetch(currentRoute.params.slug as string);
+  }),
+});
+</script>
+
+<script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { QForm, useQuasar } from 'quasar';
+import { storeToRefs } from 'pinia';
+import { onScopeDispose } from 'vue';
 import RxInput from 'src/components/RxInput.vue';
 import RxColorInput from 'src/components/RxColorInput.vue';
-import { useDatabase } from 'src/boot/database';
-import { QForm, useQuasar } from 'quasar';
-import { useSubscription } from '@vueuse/rxjs';
-import { ref } from 'vue';
+
+const heroStore = useHeroStore();
+const { hero, hp, deleted, synced } = storeToRefs(heroStore);
+const { resync, save } = heroStore;
 
 interface HeroEditPageProps {
   slug: string;
 }
 
-const database = useDatabase();
 const router = useRouter();
 const quasar = useQuasar();
-const props = defineProps<HeroEditPageProps>();
+defineProps<HeroEditPageProps>();
 
 const form = ref<QForm>();
-const hero = ref<RxHeroDocument>();
-const hp = ref(0);
-const deleted = ref(false);
-const synced = ref(true);
 
-const data = await database.heroes.findOne(props.slug).exec();
-hero.value = data as RxHeroDocument;
-hp.value = hero.value.hp;
-
-const subscription = hero.value.$.subscribe((_hero) => {
-  hero.value = _hero;
-  synced.value = _hero.hp === hp.value;
-  deleted.value = _hero.deleted;
+onScopeDispose(async () => {
+  heroStore.dispose();
 });
-
-// useSubscription(subscription);
 
 function onHide() {
   router.push({ name: 'hero-list' });
-}
-
-function onResyncClick() {
-  hp.value = hero.value?.hp || 0;
-  synced.value = true;
 }
 
 async function onFormSubmit() {
@@ -112,7 +159,7 @@ async function onFormSubmit() {
   }
 
   try {
-    await hero.value?.incrementalPatch({ hp: parseInt(hp.value + '') });
+    await save();
     onHide();
   } catch (err) {
     quasar.notify({ message: 'Something is wrong', color: 'negative' });

@@ -24,14 +24,13 @@
     </q-drawer>
 
     <q-page-container>
-      <suspense-router-view />
+      <router-view />
     </q-page-container>
   </q-layout>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import SuspenseRouterView from 'components/SuspenseRouterView';
 const leftDrawerOpen = ref(false);
 
 function toggleLeftDrawer() {

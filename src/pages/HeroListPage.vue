@@ -1,6 +1,12 @@
 <template>
   <q-page class="row items-center justify-evenly">
-    <q-table title="Treats" :rows="heroes" :columns="columns" row-key="name">
+    <q-table
+      title="Treats"
+      :rows="heroes"
+      :loading="loading"
+      :columns="columns"
+      row-key="name"
+    >
       <template v-slot:top>
         <q-btn
           :to="{ name: 'hero-create' }"
@@ -21,76 +27,119 @@
             round
             icon="delete"
             color="negative"
-            @click="onRemoveHeroClick(props.row)"
+            @click="remove(props.row)"
           ></q-btn>
         </q-td>
       </template>
     </q-table>
-    <suspense-router-view />
+    <router-view />
   </q-page>
 </template>
 
-<script setup lang="ts">
-import { useDatabase } from 'src/boot/database';
+<script lang="ts">
+import { computed, defineComponent, ref } from 'vue';
+import { preFetch } from 'quasar/wrappers';
 import { RxHeroDocument } from 'src/types/hero';
-import { computed, ref } from 'vue';
 import { tap } from 'rxjs/operators';
 import { QTableColumn } from 'quasar';
-import { useObservable, useSubscription } from '@vueuse/rxjs';
-import SuspenseRouterView from 'src/components/SuspenseRouterView';
+import { defineStore } from 'pinia';
+import { Subscription } from 'rxjs';
 
-const database = useDatabase();
-const loading = ref(false);
-const heroes = ref<RxHeroDocument[]>();
+var useHeroStore = defineStore('hero-list', () => {
+  const loading = ref(false);
+  const heroes = ref<RxHeroDocument[]>();
 
-const columns = computed(
-  () =>
-    [
-      {
-        name: 'name',
-        field: 'name',
-        label: 'Name',
-        align: 'left',
-        sortable: true,
-      },
-      {
-        name: 'color',
-        field: 'color',
-        label: 'Color',
-        align: 'center',
-        sortable: true,
-      },
-      { name: 'hp', field: 'hp', label: 'HP', align: 'right', sortable: true },
-      {
-        name: 'maxHP',
-        field: 'maxHP',
-        label: 'Max HP',
-        align: 'right',
-        sortable: true,
-      },
-      { name: 'actions', field: 'slug', align: 'center' },
-    ] as QTableColumn[]
-);
+  const columns = computed(
+    () =>
+      [
+        {
+          name: 'name',
+          field: 'name',
+          label: 'Name',
+          align: 'left',
+          sortable: true,
+        },
+        {
+          name: 'color',
+          field: 'color',
+          label: 'Color',
+          align: 'center',
+          sortable: true,
+        },
+        {
+          name: 'hp',
+          field: 'hp',
+          label: 'HP',
+          align: 'right',
+          sortable: true,
+        },
+        {
+          name: 'maxHP',
+          field: 'maxHP',
+          label: 'Max HP',
+          align: 'right',
+          sortable: true,
+        },
+        { name: 'actions', field: 'slug', align: 'center' },
+      ] as QTableColumn[]
+  );
 
-const query = database.heroes.find({
-  selector: {},
-  sort: [{ name: 'asc' }],
+  let subscription: Subscription;
+  function fetch(this: HeroStore) {
+    const query = this.database.heroes.find({
+      selector: {},
+      sort: [{ name: 'asc' }],
+    });
+
+    subscription = query.$.pipe(
+      tap(() => {
+        setTimeout(() => (loading.value = false), 1000);
+      })
+    ).subscribe((result: RxHeroDocument[]) => {
+      heroes.value = result;
+    });
+  }
+
+  function remove(hero: RxHeroDocument) {
+    hero.remove();
+  }
+
+  function dispose(this: HeroStore) {
+    if (subscription) {
+      subscription.unsubscribe();
+    }
+    this.$dispose;
+  }
+
+  return {
+    loading,
+    columns,
+    heroes,
+    fetch,
+    dispose,
+    remove,
+  };
 });
+type HeroStore = ReturnType<typeof useHeroStore>;
 
-const observable = query.$.pipe(
-  tap(() => {
-    setTimeout(() => (loading.value = false), 1000);
-  })
-);
-
-const subscription = observable.subscribe((result: RxHeroDocument[]) => {
-  heroes.value = result;
+export default defineComponent({
+  preFetch: preFetch(({ store }) => {
+    const heroStore = useHeroStore(store);
+    return heroStore.fetch();
+  }),
 });
+</script>
 
-// useObservable(observable);
-// useSubscription(subscription);
+<script setup lang="ts">
+import { storeToRefs } from 'pinia';
+import { onScopeDispose } from 'vue';
 
-const onRemoveHeroClick = (hero: RxHeroDocument) => {
-  hero.remove();
-};
+const heroStore = useHeroStore();
+const { loading, heroes } = storeToRefs(heroStore);
+const { remove } = heroStore;
+const columns = computed(() => heroStore.columns);
+
+onScopeDispose(async () => {
+  heroStore.dispose();
+});
 </script>

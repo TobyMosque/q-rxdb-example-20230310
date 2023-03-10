@@ -15,10 +15,13 @@ export default defineComponent({
           if (Component) {
             const { matched, fullPath } = route;
             const { props, type } = Component;
-            const match = matched.find(
-              (m) => m.components?.default === type && m.components?.fallback
-            );
-            if (!match || !match.components) {
+
+            const match = matched.find((m) => m.components?.default === type);
+
+            const _default = match?.components?.default;
+            const fallback = match?.components?.fallback;
+
+            if (!fallback) {
               return h(
                 Suspense,
                 {
@@ -34,8 +37,6 @@ export default defineComponent({
                 }
               );
             }
-            const _default = match.components.default;
-            const fallback = match.components.fallback;
 
             let dProps: unknown;
             let fProps: unknown;
