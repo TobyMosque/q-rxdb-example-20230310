@@ -13,6 +13,7 @@
   "dependencies": {
     "@faker-js/faker": "^7.6.0",
     "@quasar/extras": "^1.0.0",
+    "@vueuse/core": "^9.13.0",
     "@vueuse/rxjs": "^9.13.0",
     "pinia": "^2.0.33",
     "quasar": "^2.6.0",

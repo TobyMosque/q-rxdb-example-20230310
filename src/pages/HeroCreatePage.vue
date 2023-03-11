@@ -36,21 +36,24 @@
 </template>
 
 <script setup lang="ts">
-import { RxHeroDocumentType } from 'src/types/hero';
-import { ref } from 'vue';
+import { onScopeDispose, ref } from 'vue';
+import { QForm, useQuasar } from 'quasar';
+import { storeToRefs } from 'pinia';
 import { useRouter } from 'vue-router';
+import { useHeroCreateStore } from 'src/stores/hero/create';
 import RxInput from 'src/components/RxInput.vue';
 import RxColorInput from 'src/components/RxColorInput.vue';
-import { faker } from '@faker-js/faker';
-import { useDatabase } from 'src/boot/database';
-import { QForm, useQuasar } from 'quasar';
 
-const database = useDatabase();
+const heroStore = useHeroCreateStore();
+const { hero } = storeToRefs(heroStore);
+onScopeDispose(async () => {
+  heroStore.dispose();
+});
+
 const router = useRouter();
 const quasar = useQuasar();
 
 const form = ref<QForm>();
-const hero = ref<Partial<RxHeroDocumentType>>({});
 function onHide() {
   router.push({ name: 'hero-list' });
 }
@@ -63,18 +66,8 @@ async function onFormSubmit() {
       color: 'warning',
     });
   }
-  const name = hero.value.name || '';
-  const slug = faker.helpers.slugify(name).toLocaleLowerCase();
-  const obj: RxHeroDocumentType = {
-    name: name,
-    slug: slug,
-    color: hero.value.color || '',
-    hp: 100,
-    maxHP: faker.datatype.number({ min: 100, max: 1000 }),
-    skills: [],
-  };
   try {
-    await database.heroes.insert(obj);
+    await heroStore.save();
     quasar.notify({ message: 'Hero Created', color: 'positive' });
     onHide();
   } catch {
